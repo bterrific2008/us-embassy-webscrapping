@@ -5,3 +5,4 @@ data/
 .vscode/
 .envrc
 __pycache__/
+*.json
