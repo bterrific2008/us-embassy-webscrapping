@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 
-import time
-
-import requests
-import re
-import json
+import hashlib
 import os
 import string
-import hashlib
+import logging
 
 import bs4
+import requests
 from bs4 import BeautifulSoup
-import tqdm
 
 
 def get_embassy_posts(url: str):
@@ -23,7 +19,7 @@ def get_embassy_posts(url: str):
     Returns:
         (list) a list of all post urls for the embassy website
     """
-
+    logging.info(f"[EMBASSY SCRAPE] Retrieving posts from the website {url}")
     sitemap_url = f"{url}/post-sitemap.xml"
     sitemap_request = requests.get(sitemap_url)
     sitemap_html = sitemap_request.content
@@ -31,18 +27,23 @@ def get_embassy_posts(url: str):
 
     embassy_posts = [loc.string for loc in sitemap_soup.find_all("loc")]
 
+    logging.info(f"[EMBASSY SCRAPE] Retrieved {len(embassy_posts)} posts from {url}")
+
     return embassy_posts
 
 
-def read_post_to_file(url: str, data_path: str):
+def read_post_to_file(url: str, data_path: str, missing_file_handler=None):
     """Extract the text of an embassy post
 
     Args:
         url (str): the url of the embassy post
+        data_path (str): the file path to missing files
 
     Returns:
         (list)
     """
+
+    logging.info(f"[READ POST] Reading post from {url}")
 
     try:
         request_post = requests.get(url)
@@ -78,4 +79,6 @@ def read_post_to_file(url: str, data_path: str):
                         post_file.write(text)
         post_file.close()
     except:
-        print("Failed to scrape", url)
+        logging.warning("[READ POST] Failed to scrape", url)
+        if missing_file_handler:
+            missing_file_handler.write(f"Failed to scrape {url}\n")
