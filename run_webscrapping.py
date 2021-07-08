@@ -1,6 +1,5 @@
 import logging
 import os
-from re import L
 import tarfile
 import threading
 import time
