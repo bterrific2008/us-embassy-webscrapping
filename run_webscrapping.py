@@ -1,6 +1,5 @@
 import logging
 import os
-from re import L
 import tarfile
 import threading
 import time
@@ -10,7 +9,6 @@ from google.cloud import storage
 
 from webscrapper import embassy, state
 
-MAX_QSIZE = 15  # max queue size
 BUF_SIZE = 100  # total number of iterations/items to process
 
 
@@ -86,7 +84,7 @@ class Embassy_Consumer:
 
 def main():
     logging.info("Started Webscrapping Run")
-    q = Queue(maxsize=MAX_QSIZE)
+    q = Queue()
 
     data_directory = os.path.join(os.getcwd(), "data")
     country_url_list = list(state.load_embassies(filepath=data_directory).items())
