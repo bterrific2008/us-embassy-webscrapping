@@ -12,6 +12,7 @@ from webscrapper import embassy, state
 MAX_QSIZE = 15  # max queue size
 BUF_SIZE = 100  # total number of iterations/items to process
 
+BUCKET_NAME = os.environ['GCP_BUCKET']
 
 def upload_blob(bucket_name, source_file_name, destination_blob_name):
     """Uploads a file to the bucket."""
@@ -69,10 +70,19 @@ class Embassy_Consumer:
 
             start_time = time.time()
 
-            embassy.read_post_to_file(
+            post_file_name, post_file_path = embassy.read_post_to_file(
                 post_url,
                 data_path,
+                country_name=country_name,
+                order=order,
             )
+
+            if post_file_name and post_file_path:
+                upload_blob(
+                    bucket_name=BUCKET_NAME,
+                    source_file_name=post_file_path,
+                    destination_blob_name=f"datasets/us_embassy_scrape/{post_file_name}",
+                )
 
             self.queue.task_done()
 
@@ -85,7 +95,7 @@ class Embassy_Consumer:
 
 def main():
     logging.info("Started Webscrapping Run")
-    q = Queue(maxsize=MAX_QSIZE)
+    q = Queue()
 
     data_directory = os.path.join(os.getcwd(), "data")
     country_url_list = list(state.load_embassies(filepath=data_directory).items())
@@ -94,8 +104,8 @@ def main():
         'end': 45,
     }"""
     country_idx = {
-        "start": 45,
-        "end": 46,
+        "start": 13,
+        "end": 49,
     }
 
     for country_name, country_url in country_url_list[
@@ -103,7 +113,7 @@ def main():
     ]:
         logging.info(f"[QUEUE] Adding jobs for {country_name}")
 
-        embassy_post_urls = embassy.get_embassy_posts(country_url)[:3]
+        embassy_post_urls = embassy.get_embassy_posts(country_url)
         logging.info(f"[QUEUE] retrieved {len(embassy_post_urls)} from {country_url}")
 
         # create data directory location
@@ -122,6 +132,8 @@ def main():
                     "data_path": data_path,
                 }
             )
+            if i%5 == 0:
+                logging.info(f"\t[QUEUE] Added {i} jobs")
 
     logging.info("Creating Embassy Consumer 1")
     consumer_1 = Embassy_Consumer(q, 1)
@@ -164,7 +176,7 @@ if __name__ == "__main__":
     logger.addHandler(ch)
 
     # set logger basic config
-    logging.basicConfig(filename="webscrapping_run_1.log", level=logging.DEBUG)
+    logging.basicConfig(filename="webscrapping_run_3.log", level=logging.DEBUG)
 
     # recording time
     start_code = time.time()

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import hashlib
 import os
 import string
 import logging
@@ -32,7 +31,7 @@ def get_embassy_posts(url: str):
     return embassy_posts
 
 
-def read_post_to_file(url: str, data_path: str, missing_file_handler=None):
+def read_post_to_file(url: str, data_path: str, missing_file_handler=None, country_name=None, order=0):
     """Extract the text of an embassy post
 
     Args:
@@ -52,13 +51,14 @@ def read_post_to_file(url: str, data_path: str, missing_file_handler=None):
 
         post_title = soup_post.find(class_="mo-breadcrumbs").find("h1").string.strip()
         post_title = post_title.translate(str.maketrans("", "", string.punctuation))
-        post_title_hash = hashlib.sha1(post_title.encode("utf-8")).hexdigest()
+        file_name = f"{country_name}{order:03}_{post_title[:50]}.txt"
 
+        file_path = os.path.join(
+            data_path,
+            file_name,
+        )
         post_file = open(
-            os.path.join(
-                data_path,
-                post_title_hash,
-            ),
+            file_path,
             "w",
         )
 
@@ -78,7 +78,9 @@ def read_post_to_file(url: str, data_path: str, missing_file_handler=None):
                     else:
                         post_file.write(text)
         post_file.close()
+        return file_name, file_path     
     except:
-        logging.warning("[READ POST] Failed to scrape", url)
+        logging.warning(f"[READ POST] Failed to scrape {url}")
         if missing_file_handler:
             missing_file_handler.write(f"Failed to scrape {url}\n")
+        return None, None
