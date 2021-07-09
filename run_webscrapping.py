@@ -152,7 +152,7 @@ def main():
     }"""
     country_idx = {
         "start": 49,
-        "end": 100,
+        "end": 50,
     }
 
     for country_name, country_url in country_url_list[
@@ -173,7 +173,7 @@ def main():
             os.makedirs(data_path)
             logging.info(f"[QUEUE] created dir {data_path}")
 
-        for page_number in range(2):
+        for page_number in range(embassy_total_page_number):
             q.put(
                 {
                     "type": READ_JOB,
@@ -185,8 +185,8 @@ def main():
                     },
                 }
             )
-            if i%5 == 0:
-                logging.info(f"\t[QUEUE] Added {i} jobs")
+            if page_number%5 == 0:
+                logging.info(f"\t[QUEUE] Added {page_number} jobs")
 
     logging.info("[MAIN] Creating Embassy Consumer 1")
     consumer_1 = Embassy_Consumer(q, 1)
