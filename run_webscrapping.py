@@ -49,7 +49,7 @@ def make_tarfile(output_filename, source_dir):
 
 class Embassy_Consumer:
     def __init__(self, queue, my_id):
-        logging.info(f"[CONSUMER] Embassy Consumer {my_id} created")
+        logging.info(f"[CONSUMER {self.id}] Embassy Consumer {my_id} created")
         self.queue = queue
         self.id = my_id
 
@@ -60,7 +60,7 @@ class Embassy_Consumer:
         data_path = embassy_post_job["data_path"]
 
         logging.info(
-            f"[CONSUMER] Embassy Consumer {self.id} running job {order} for {country_name}"
+            f"[CONSUMER {self.id}] Embassy Consumer {self.id} running job {order} for {country_name}"
         )
 
         file_name, file_path = embassy.read_post_to_file(
@@ -71,7 +71,7 @@ class Embassy_Consumer:
         )
 
         logging.info(
-            f"[CONSUMER] Embassy Consumer {self.id} finished analysis for {country_name} {order}"
+            f"[CONSUMER {self.id}] Embassy Consumer {self.id} finished analysis for {country_name} {order}"
         )
 
         return file_name, file_path
@@ -87,10 +87,10 @@ class Embassy_Consumer:
             country_url, page_number=embassy_page_number, page_count=10
         )
         logging.info(
-            f"[CONSUMER] retrieved {len(embassy_posts)} from {country_url} on page {embassy_page_number}"
+            f"[CONSUMER {self.id}] retrieved {len(embassy_posts)} from {country_url} on page {embassy_page_number}"
         )
 
-        logging.info(f"[CONSUMER] Adding {len(embassy_posts)} jobs to queue")
+        logging.info(f"[CONSUMER {self.id}] Adding {len(embassy_posts)} jobs to queue")
         for post_json in embassy_posts:
             self.queue.put(
                 {
@@ -107,7 +107,7 @@ class Embassy_Consumer:
 
 
     def run(self):
-        logging.info(f"[CONSUMER] Embassy Consumer {self.id} created")
+        logging.info(f"[CONSUMER {self.id}] Embassy Consumer {self.id} created")
 
         if self.queue.empty():
             time.sleep(10)
@@ -118,6 +118,7 @@ class Embassy_Consumer:
             embassy_post_job_content = embassy_post_job["content"]
 
             if embassy_post_job_type == WRITE_JOB:
+                logging.info(f"[CONSUMER {self.id}] Started write job")
                 post_file_name, post_file_path = self.write_post_job(embassy_post_job_content)
                 if post_file_name and post_file_path:
                     upload_blob(
@@ -126,13 +127,14 @@ class Embassy_Consumer:
                         destination_blob_name=f"datasets/us_embassy_scrape/{post_file_name}",
                     )
             elif embassy_post_job_type == READ_JOB:
+                logging.info(f"[CONSUMER {self.id}] Started read job")
                 self.get_post_job(embassy_post_job_content)
 
 
             self.queue.task_done()
 
             logging.info(
-                f"[CONSUMER] Embassy Consumer {self.id} finished job after {time.time()-start_time}"
+                f"[CONSUMER {self.id}] Embassy Consumer {self.id} finished job after {time.time()-start_time}"
             )
 
             time.sleep(5)

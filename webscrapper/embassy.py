@@ -18,14 +18,23 @@ def get_embassy_posts(url: str, page_number: int=1, page_count: int=10):
     Returns:
         (list) a list of all post urls for the embassy website
     """
-    logging.info(f"[EMBASSY SCRAPE] Retrieving {page_count} posts of page {page_number} from the website {url}")
-    posts_url = f"{url}/wp-json/wp/v2/posts?per_page={page_count}&page={page_number}"
-    posts_request = requests.get(posts_url)
-    total_page_number = posts_request.headers['X-WP-TotalPages']
-    posts = posts_request.json()
+    posts_request = None
+    try:
+        logging.info(f"[EMBASSY SCRAPE] Retrieving {page_count} posts of page {page_number} from the website {url}")
+        posts_url = f"{url}/wp-json/wp/v2/posts?per_page={page_count}&page={page_number}"
+        posts_request = requests.get(posts_url)
+    except Exception as e:
+        logging.warning(e)
+    
+    if posts_request:
+        try:
+            total_page_number = posts_request.headers['X-WP-TotalPages']
+            posts = posts_request.json()
+        except Exception as e:
+            logging.warning(e)
+            logging.warning(posts_request.content)
 
     logging.info(f"[EMBASSY SCRAPE] Retrieved {len(posts)} posts from {url}")
-
     return posts, total_page_number
 
 
