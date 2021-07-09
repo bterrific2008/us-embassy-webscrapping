@@ -13,6 +13,7 @@ BUF_SIZE = 100  # total number of iterations/items to process
 WRITE_JOB = 0
 READ_JOB = 1
 
+BUCKET_NAME = os.environ['GCP_BUCKET']
 
 def upload_blob(bucket_name, source_file_name, destination_blob_name):
     """Uploads a file to the bucket."""
@@ -62,7 +63,7 @@ class Embassy_Consumer:
             f"[CONSUMER] Embassy Consumer {self.id} running job {order} for {country_name}"
         )
 
-        embassy.read_post_to_file(
+        file_name, file_path = embassy.read_post_to_file(
             country_name,
             post,
             data_path,
@@ -72,6 +73,8 @@ class Embassy_Consumer:
         logging.info(
             f"[CONSUMER] Embassy Consumer {self.id} finished analysis for {country_name} {order}"
         )
+
+        return file_name, file_path
 
     def get_post_job(self, embassy_post_job: dict):
         country_url = embassy_post_job["url"]
@@ -102,6 +105,7 @@ class Embassy_Consumer:
             )
             post_count += 1
 
+
     def run(self):
         logging.info(f"[CONSUMER] Embassy Consumer {self.id} created")
 
@@ -114,9 +118,16 @@ class Embassy_Consumer:
             embassy_post_job_content = embassy_post_job["content"]
 
             if embassy_post_job_type == WRITE_JOB:
-                self.write_post_job(embassy_post_job_content)
+                post_file_name, post_file_path = self.write_post_job(embassy_post_job_content)
+                if post_file_name and post_file_path:
+                    upload_blob(
+                        bucket_name=BUCKET_NAME,
+                        source_file_name=post_file_path,
+                        destination_blob_name=f"datasets/us_embassy_scrape/{post_file_name}",
+                    )
             elif embassy_post_job_type == READ_JOB:
                 self.get_post_job(embassy_post_job_content)
+
 
             self.queue.task_done()
 
@@ -138,8 +149,8 @@ def main():
         'end': 45,
     }"""
     country_idx = {
-        "start": 51,
-        "end": 52,
+        "start": 49,
+        "end": 100,
     }
 
     for country_name, country_url in country_url_list[
@@ -172,6 +183,8 @@ def main():
                     },
                 }
             )
+            if i%5 == 0:
+                logging.info(f"\t[QUEUE] Added {i} jobs")
 
     logging.info("[MAIN] Creating Embassy Consumer 1")
     consumer_1 = Embassy_Consumer(q, 1)
@@ -214,7 +227,7 @@ if __name__ == "__main__":
     logger.addHandler(ch)
 
     # set logger basic config
-    logging.basicConfig(filename="test_run_3.log", level=logging.DEBUG)
+    logging.basicConfig(filename="webscrapping_run_4.log", level=logging.DEBUG)
 
     # recording time
     start_code = time.time()
