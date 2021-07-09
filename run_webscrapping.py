@@ -10,6 +10,8 @@ from google.cloud import storage
 from webscrapper import embassy, state
 
 BUF_SIZE = 100  # total number of iterations/items to process
+WRITE_JOB = 0
+READ_JOB = 1
 
 
 def upload_blob(bucket_name, source_file_name, destination_blob_name):
@@ -50,36 +52,79 @@ class Embassy_Consumer:
         self.queue = queue
         self.id = my_id
 
+    def write_post_job(self, embassy_post_job: dict):
+        order = embassy_post_job["order"]
+        post = embassy_post_job["post"]
+        country_name = embassy_post_job["country_name"]
+        data_path = embassy_post_job["data_path"]
+
+        logging.info(
+            f"[CONSUMER] Embassy Consumer {self.id} running job {order} for {country_name}"
+        )
+
+        embassy.read_post_to_file(
+            country_name,
+            post,
+            data_path,
+            order,
+        )
+
+        logging.info(
+            f"[CONSUMER] Embassy Consumer {self.id} finished analysis for {country_name} {order}"
+        )
+
+    def get_post_job(self, embassy_post_job: dict):
+        country_url = embassy_post_job["url"]
+        embassy_page_number = embassy_post_job["page_number"]
+        data_path = embassy_post_job["data_path"]
+        country_name = embassy_post_job["country_name"]
+        post_count = (embassy_page_number - 1) * 10 + 1
+
+        embassy_posts, _ = embassy.get_embassy_posts(
+            country_url, page_number=embassy_page_number, page_count=10
+        )
+        logging.info(
+            f"[CONSUMER] retrieved {len(embassy_posts)} from {country_url} on page {embassy_page_number}"
+        )
+
+        logging.info(f"[CONSUMER] Adding {len(embassy_posts)} jobs to queue")
+        for post_json in embassy_posts:
+            self.queue.put(
+                {
+                    "type": WRITE_JOB,
+                    "content": {
+                        "order": post_count,
+                        "post": post_json,
+                        "country_name": country_name,
+                        "data_path": data_path,
+                    },
+                }
+            )
+            post_count += 1
+
     def run(self):
         logging.info(f"[CONSUMER] Embassy Consumer {self.id} created")
 
         if self.queue.empty():
             time.sleep(10)
         while not self.queue.empty():
-            embassy_post_job = self.queue.get()
-            order = embassy_post_job['order']
-            country_name = embassy_post_job['country_name']
-            post_url = embassy_post_job['post_url']
-            data_path = embassy_post_job['data_path']
-
-            logging.info(
-                f"[CONSUMER] Embassy Consumer {self.id} running job {order} for {country_name} {post_url}"
-            )
-
             start_time = time.time()
+            embassy_post_job = self.queue.get()
+            embassy_post_job_type = embassy_post_job["type"]
+            embassy_post_job_content = embassy_post_job["content"]
 
-            embassy.read_post_to_file(
-                post_url,
-                data_path,
-            )
+            if embassy_post_job_type == WRITE_JOB:
+                self.write_post_job(embassy_post_job_content)
+            elif embassy_post_job_type == READ_JOB:
+                self.get_post_job(embassy_post_job_content)
 
             self.queue.task_done()
 
             logging.info(
-                f"[CONSUMER] Embassy Consumer {self.id} finished analysis for {country_name} {order} after {time.time()-start_time}"
+                f"[CONSUMER] Embassy Consumer {self.id} finished job after {time.time()-start_time}"
             )
 
-            time.sleep(3)
+            time.sleep(5)
 
 
 def main():
@@ -93,8 +138,8 @@ def main():
         'end': 45,
     }"""
     country_idx = {
-        "start": 45,
-        "end": 46,
+        "start": 51,
+        "end": 52,
     }
 
     for country_name, country_url in country_url_list[
@@ -102,35 +147,41 @@ def main():
     ]:
         logging.info(f"[QUEUE] Adding jobs for {country_name}")
 
-        embassy_post_urls = embassy.get_embassy_posts(country_url)[:3]
-        logging.info(f"[QUEUE] retrieved {len(embassy_post_urls)} from {country_url}")
+        _, embassy_total_page_number_str = embassy.get_embassy_posts(
+            country_url, page_number=1, page_count=10
+        )
+        embassy_total_page_number = int(embassy_total_page_number_str)
+
+        logging.info(f"[QUEUE] Embassy has {embassy_total_page_number} pages")
 
         # create data directory location
-        data_path = os.path.join(os.getcwd(), "data", country_name)
+        data_path = os.path.join(data_directory, country_name)
         if not os.path.exists(data_path):
             os.makedirs(data_path)
-            logging.info(f"[QUEUE] Created dir {data_path}")
+            logging.info(f"[QUEUE] created dir {data_path}")
 
-        logging.info(f"[QUEUE] Adding {len(embassy_post_urls)} jobs to queue")
-        for i, post_url in enumerate(embassy_post_urls):
+        for page_number in range(2):
             q.put(
                 {
-                    "order": i,
-                    "post_url": post_url,
-                    "country_name": country_name,
-                    "data_path": data_path,
+                    "type": READ_JOB,
+                    "content": {
+                        "url": country_url,
+                        "page_number": page_number + 1,
+                        "data_path": data_path,
+                        "country_name": country_name,
+                    },
                 }
             )
 
-    logging.info("Creating Embassy Consumer 1")
+    logging.info("[MAIN] Creating Embassy Consumer 1")
     consumer_1 = Embassy_Consumer(q, 1)
     consumer_thread_1 = threading.Thread(target=consumer_1.run)
 
-    logging.info("Creating Embassy Consumer 2")
+    logging.info("[MAIN] Creating Embassy Consumer 2")
     consumer_2 = Embassy_Consumer(q, 2)
     consumer_thread_2 = threading.Thread(target=consumer_2.run)
 
-    logging.info("Creating Embassy Consumer 3")
+    logging.info("[MAIN] Creating Embassy Consumer 3")
     consumer_3 = Embassy_Consumer(q, 3)
     consumer_thread_3 = threading.Thread(target=consumer_3.run)
 
@@ -163,7 +214,7 @@ if __name__ == "__main__":
     logger.addHandler(ch)
 
     # set logger basic config
-    logging.basicConfig(filename="webscrapping_run_1.log", level=logging.DEBUG)
+    logging.basicConfig(filename="test_run_3.log", level=logging.DEBUG)
 
     # recording time
     start_code = time.time()

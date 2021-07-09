@@ -10,7 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 
 
-def get_embassy_posts(url: str):
+def get_embassy_posts(url: str, page_number: int=1, page_count: int=10):
     """Retrieves the posts of an embassy website
 
     Args:
@@ -19,66 +19,55 @@ def get_embassy_posts(url: str):
     Returns:
         (list) a list of all post urls for the embassy website
     """
-    logging.info(f"[EMBASSY SCRAPE] Retrieving posts from the website {url}")
-    sitemap_url = f"{url}/post-sitemap.xml"
-    sitemap_request = requests.get(sitemap_url)
-    sitemap_html = sitemap_request.content
-    sitemap_soup = BeautifulSoup(sitemap_html, "lxml")
+    logging.info(f"[EMBASSY SCRAPE] Retrieving {page_count} posts of page {page_number} from the website {url}")
+    posts_url = f"{url}/wp-json/wp/v2/posts?per_page={page_count}&page={page_number}"
+    posts_request = requests.get(posts_url)
+    total_page_number = posts_request.headers['X-WP-TotalPages']
+    posts = posts_request.json()
 
-    embassy_posts = [loc.string for loc in sitemap_soup.find_all("loc")]
+    logging.info(f"[EMBASSY SCRAPE] Retrieved {len(posts)} posts from {url}")
 
-    logging.info(f"[EMBASSY SCRAPE] Retrieved {len(embassy_posts)} posts from {url}")
-
-    return embassy_posts
+    return posts, total_page_number
 
 
-def read_post_to_file(url: str, data_path: str, missing_file_handler=None):
+def clean_html(text: str):
+    html_clean = BeautifulSoup(text, features='lxml').text
+    encode_clean = html_clean.encode('ascii', 'ignore').decode()
+    new_line_clean = encode_clean.replace('\n', "")
+    return new_line_clean
+
+
+def read_post_to_file(country_name: str, post: dict, data_path: str, order: int):
     """Extract the text of an embassy post
 
     Args:
-        url (str): the url of the embassy post
-        data_path (str): the file path to missing files
+        post (dict): the json representation of a post
 
     Returns:
         (list)
     """
 
-    logging.info(f"[READ POST] Reading post from {url}")
+    logging.info(f"[READ POST] Reading post")
 
-    try:
-        request_post = requests.get(url)
-        html_post = request_post.content
-        soup_post = BeautifulSoup(html_post, "lxml")
+    raw_title = post['title']['rendered']
+    raw_content = post['content']['rendered']
 
-        post_title = soup_post.find(class_="mo-breadcrumbs").find("h1").string.strip()
-        post_title = post_title.translate(str.maketrans("", "", string.punctuation))
-        post_title_hash = hashlib.sha1(post_title.encode("utf-8")).hexdigest()
+    cleaned_title = clean_html(raw_title)
+    cleaned_content = clean_html(raw_content)
+    
+    post_title = cleaned_title.translate(str.maketrans("", "", string.punctuation))
+    file_name = f"{country_name}{order:03}_{post_title[:50]}.txt"
+    file_path = os.path.join(
+        data_path,
+        file_name,
+    )
 
-        post_file = open(
-            os.path.join(
-                data_path,
-                post_title_hash,
-            ),
-            "w",
-        )
+    post_file = open(
+        file_path,
+        'w'
+    )
 
-        post_file.write(f"{post_title}\n")
-        for sibling in (
-            soup_post.find(class_="main")
-            .article.find(class_="entry-content")
-            .div.next_siblings
-        ):
-            if type(sibling) is bs4.element.Tag:
-                if sibling.name == "p":
-                    text = f"{sibling.text if sibling.text else ''} "
-                    if sibling.attrs:
-                        if "class" in sibling.attrs:
-                            if "byline" not in sibling.attrs["class"]:
-                                post_file.write(text)
-                    else:
-                        post_file.write(text)
-        post_file.close()
-    except:
-        logging.warning("[READ POST] Failed to scrape", url)
-        if missing_file_handler:
-            missing_file_handler.write(f"Failed to scrape {url}\n")
+    post_file.write(f"{cleaned_title}\n")
+    post_file.write(f"{cleaned_content}")
+
+    return file_name, file_path
