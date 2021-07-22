@@ -78,6 +78,7 @@ class Embassy_Consumer:
                     source_file_name=post_file_path,
                     destination_blob_name=f"datasets/us_embassy_scrape/{post_file_name}",
                 )
+                time.sleep(2)
 
             logging.info(
                 f"[CONSUMER {self.id}] Embassy Consumer {self.id} finished analysis for {country_name} {order}"
